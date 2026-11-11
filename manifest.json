@@ -1,0 +1,17 @@
+{
+  "name": "Gia’s · Gestión de tiendas",
+  "short_name": "Gia’s",
+  "description": "Pedidos Shein, inventario, ventas y clientes de Gia’s Shop y Gia’s Kids.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FBF6F1",
+  "theme_color": "#C2237A",
+  "lang": "es",
+  "icons": [
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
