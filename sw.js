@@ -1,7 +1,7 @@
 /* Hace que el sistema se instale como app y abra rápido.
    Solo guarda los archivos propios; los datos siempre vienen de Firebase.
    Si cambias algún archivo, sube el número de VERSION. */
-const VERSION = "gias-v5";
+const VERSION = "gias-v6";
 const ARCHIVOS = ["./", "index.html", "styles.css", "script.js", "config.js", "manifest.json",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 

@@ -756,7 +756,7 @@ function daisy(x, cx, cy, r, color){ x.save(); x.fillStyle = color; for (let k =
 async function makeReceipt(v){
   const key = S.store, C = RECIBO[key], st = STORES[key];
   try { await Promise.all(['400 52px "Bodoni Moda"', '600 60px "Bodoni Moda"', 'italic 400 36px "Bodoni Moda"', '400 28px Jost', '500 32px Jost'].map(f => document.fonts.load(f))); } catch {}
-  const W = 1080, P = 96, ink = "#231A1F", soft = "#7A6670", line = "#EADBD4";
+  const W = 1080, P = 96, ink = "#1E1519", soft = "#4A3B42", line = "#E2CFC6";
   const SER = '"Bodoni Moda", Georgia, serif', SAN = 'Jost, "Segoe UI", sans-serif';
   const lines = v.lineas || [];
   const m = document.createElement("canvas").getContext("2d"); m.font = `italic 400 36px ${SER}`;
@@ -782,17 +782,17 @@ async function makeReceipt(v){
   y += 50; rule(); y += 74;
   for (const l of lines){
     x.textAlign = "left"; x.fillStyle = ink; x.font = `500 32px ${SAN}`; x.fillText(fitText(x, l.descripcion, W - 2 * P - 250), P, y);
-    x.fillStyle = soft; x.font = `400 26px ${SAN}`; x.fillText([l.talla && "Talla " + l.talla, l.color, `${l.cantidad} × ${money(l.precio)}`].filter(Boolean).join("     "), P, y + 40);
+    x.fillStyle = soft; x.font = `400 28px ${SAN}`; x.fillText([l.talla && "Talla " + l.talla, l.color, `${l.cantidad} × ${money(l.precio)}`].filter(Boolean).join("     "), P, y + 40);
     x.textAlign = "right"; x.fillStyle = ink; x.font = `400 36px ${SER}`; x.fillText(money(l.cantidad * l.precio), W - P, y + 12);
     y += 104;
   }
   y -= 28; rule(); y += 84;
   x.textAlign = "left"; x.fillStyle = ink; x.font = `500 32px ${SAN}`; x.fillText("Total", P, y);
   x.textAlign = "right"; x.fillStyle = C.acc; x.font = `600 60px ${SER}`; x.fillText(money(v.total), W - P, y + 6);
-  y += 56; x.textAlign = "left"; x.fillStyle = soft; x.font = `400 26px ${SAN}`; x.fillText("Forma de pago: " + (v.metodo || ""), P, y);
+  y += 56; x.textAlign = "left"; x.fillStyle = soft; x.font = `400 28px ${SAN}`; x.fillText("Forma de pago: " + (v.metodo || ""), P, y);
   extra.forEach(t => { y += 40; x.fillText(t, P, y); });
   y += 100; daisy(x, W / 2, y, 28, C.acc); y += 86;
-  x.textAlign = "center"; x.fillStyle = "#4A3A41"; x.font = `italic 400 36px ${SER}`; msg.forEach(t => { x.fillText(t, W / 2, y); y += 52; });
+  x.textAlign = "center"; x.fillStyle = "#2B2026"; x.font = `italic 400 36px ${SER}`; msg.forEach(t => { x.fillText(t, W / 2, y); y += 52; });
   return await new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error("imagen vacía")), "image/png"));
 }
 const waText = v => `Hola${v.cliente ? " " + v.cliente : ""}, gracias por tu compra en ${STORES[S.store].nombre}. Aquí tienes tu recibo 🌸`;
@@ -918,22 +918,21 @@ function openCatalog(){
   const disp = S.productos.filter(p => p.existencia > 0).sort((a, b) => (b.creado || 0) - (a.creado || 0));
   if (!disp.length){ toast("No hay prendas con existencia para el catálogo."); return; }
   const sel = new Set();
-  const o = openModal({wide: true, title: "Catálogo para WhatsApp", sub: "Elige hasta 8 prendas y se arma una imagen con fotos y precios para tus estados.",
-    body: `<label style="display:flex;gap:.5rem;align-items:center"><input type="checkbox" id="k-bs" ${tasa() ? "checked" : "disabled"}> Mostrar también el precio en bolívares${tasa() ? "" : " (coloca primero la tasa del euro)"}</label>
-      <div class="racks" id="k-list" style="grid-template-columns:repeat(auto-fill,minmax(130px,1fr))">${disp.map(p => `<label class="pick-card"><input type="checkbox" value="${p.id}" aria-label="${esc(p.descripcion)}"><span class="ph">${p.foto ? `<img src="${blobUrl(p.foto)}" alt="" loading="lazy">` : ICON.dress}</span><span class="nm">${esc(p.descripcion)}</span><span class="faint num">${money(p.precio)}${p.talla ? ", talla " + esc(p.talla) : ""}</span></label>`).join("")}</div>`,
+  const o = openModal({wide: true, title: "Catálogo para WhatsApp", sub: "Elige hasta 8 prendas y se arma una imagen con foto, descripción, talla y color, sin precios.",
+    body: `<div class="racks" id="k-list" style="grid-template-columns:repeat(auto-fill,minmax(130px,1fr))">${disp.map(p => `<label class="pick-card"><input type="checkbox" value="${p.id}" aria-label="${esc(p.descripcion)}"><span class="ph">${p.foto ? `<img src="${blobUrl(p.foto)}" alt="" loading="lazy">` : ICON.dress}</span><span class="nm">${esc(p.descripcion)}</span><span class="faint">${[p.talla && "Talla " + esc(p.talla), esc(p.color)].filter(Boolean).join(", ")}</span></label>`).join("")}</div>`,
     foot: `<span class="faint left" id="k-n">0 de 8 elegidas</span><button class="btn" data-close>Cancelar</button><button class="btn primary" id="k-ok" disabled>Crear imagen</button>`});
   $("#k-list", o).onchange = e => { const cb = e.target; if (cb.checked){ if (sel.size >= 8){ cb.checked = false; toast("Máximo 8 prendas por imagen."); return; } sel.add(cb.value); } else sel.delete(cb.value); $("#k-n", o).textContent = sel.size + " de 8 elegidas"; $("#k-ok", o).disabled = !sel.size; };
   $("#k-ok", o).onclick = () => {
-    const prods = disp.filter(p => sel.has(p.id)), conBs = $("#k-bs", o).checked; closeModal(o);
-    openImageShare({title: "Catálogo listo", sub: "Compártelo en tus estados o grupos de WhatsApp.", make: () => makeCatalog(prods, conBs), name: `Catalogo-${STORES[S.store].nombre.replace(/\s+/g, "-")}-${hoy()}.png`, text: `Novedades disponibles en ${STORES[S.store].nombre} ✨`});
+    const prods = disp.filter(p => sel.has(p.id)); closeModal(o);
+    openImageShare({title: "Catálogo listo", sub: "Compártelo en tus estados o grupos de WhatsApp.", make: () => makeCatalog(prods), name: `Catalogo-${STORES[S.store].nombre.replace(/\s+/g, "-")}-${hoy()}.png`, text: `Novedades disponibles en ${STORES[S.store].nombre} ✨`});
   };
 }
-async function makeCatalog(prods, conBs){
+async function makeCatalog(prods){
   const key = S.store, C = RECIBO[key], st = STORES[key];
   try { await Promise.all(['400 52px "Bodoni Moda"', '600 40px "Bodoni Moda"', 'italic 400 32px "Bodoni Moda"', '400 24px Jost', '500 30px Jost'].map(f => document.fonts.load(f))); } catch {}
-  const W = 1080, P = 60, G = 30, cw = (W - 2 * P - G) / 2, ph = Math.round(cw * 4 / 3), ch = ph + (conBs ? 172 : 140);
+  const W = 1080, P = 60, G = 30, cw = (W - 2 * P - G) / 2, ph = Math.round(cw * 4 / 3), ch = ph + 160;
   const rows = Math.ceil(prods.length / 2), H = 450 + rows * (ch + G) + 130;
-  const SER = '"Bodoni Moda", Georgia, serif', SAN = 'Jost, "Segoe UI", sans-serif', ink = "#231A1F", soft = "#7A6670";
+  const SER = '"Bodoni Moda", Georgia, serif', SAN = 'Jost, "Segoe UI", sans-serif', ink = "#1E1519", soft = "#4A3B42";
   const c = document.createElement("canvas"); c.width = W; c.height = H; const x = c.getContext("2d");
   x.fillStyle = "#FFFBF8"; x.fillRect(0, 0, W, H);
   x.globalAlpha = .5; x.fillStyle = C.soft; x.fillRect(0, 0, W, 300); x.globalAlpha = 1;
@@ -952,12 +951,13 @@ async function makeCatalog(prods, conBs){
     else daisy(x, cx + cw / 2, cy + ph / 2, 40, C.acc);
     x.restore();
     x.textAlign = "left"; x.fillStyle = ink; x.font = `500 30px ${SAN}`; x.fillText(fitText(x, p.descripcion, cw - 40), cx + 20, cy + ph + 46);
-    x.fillStyle = soft; x.font = `400 24px ${SAN}`; x.fillText(fitText(x, [p.talla && "Talla " + p.talla, p.color].filter(Boolean).join(", ") || " ", cw - 40), cx + 20, cy + ph + 82);
-    x.fillStyle = C.acc; x.font = `600 40px ${SER}`; x.fillText(money(p.precio), cx + 20, cy + ph + 128);
-    if (conBs){ x.fillStyle = soft; x.font = `400 24px ${SAN}`; x.fillText(enBs(p.precio), cx + 20, cy + ph + 160); }
+    x.fillStyle = soft; x.font = `400 27px ${SAN}`; x.fillText(fitText(x, [p.talla && "Talla " + p.talla, p.color].filter(Boolean).join(", ") || " ", cw - 40), cx + 20, cy + ph + 86);
+    x.font = `500 24px ${SAN}`; const tw = x.measureText("Disponible").width + 36;
+    roundRect(x, cx + 20, cy + ph + 106, tw, 38, 19); x.fillStyle = C.soft; x.fill();
+    x.fillStyle = C.acc; x.fillText("Disponible", cx + 38, cy + ph + 133);
   });
   daisy(x, W / 2, H - 100, 20, C.acc);
-  x.textAlign = "center"; x.fillStyle = "#4A3A41"; x.font = `italic 400 32px ${SER}`; x.fillText("Escríbenos para apartar la tuya", W / 2, H - 45);
+  x.textAlign = "center"; x.fillStyle = "#2B2026"; x.font = `italic 400 32px ${SER}`; x.fillText("Escríbenos para apartar la tuya", W / 2, H - 45);
   return await new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error("imagen vacía")), "image/png"));
 }
 
