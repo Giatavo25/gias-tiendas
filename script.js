@@ -167,8 +167,12 @@ async function init(){
   S.auth.onAuthStateChanged(u => {
     S.user = u;
     if (!u){ stopAll(); renderSignIn(); return; }
-    if (S.pwLogin){ S.pwLogin = false; marcarDesbloqueo(); }
-    if (bioActiva() && !desbloqueado()) renderLock(); else startData();
+    if (S.pwLogin){
+      S.pwLogin = false; marcarDesbloqueo(); startData();
+      if (S.bio && !bioActiva()) setTimeout(ofrecerHuella, 600);
+      return;
+    }
+    if (desbloqueado()) startData(); else renderLock();
   });
 }
 /* ---------- Entrar con huella (o cara en iPhone) ----------
@@ -179,9 +183,19 @@ const bioKey = () => "gias-bio-" + (S.user?.uid || "");
 const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const unb64u = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), c => c.charCodeAt(0));
 async function bioDisponible(){ try { return !!(window.PublicKeyCredential && window.isSecureContext && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); } catch { return false; } }
+const LS = {
+  get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+  del: k => { try { localStorage.removeItem(k); } catch {} }
+};
+const tiendasOk = () => { try { return JSON.parse(LS.get("gias-ok-" + (S.user?.uid || "")) || "[]"); } catch { return []; } };
+const marcarTiendaOk = k => { const l = tiendasOk(); if (!l.includes(k)) LS.set("gias-ok-" + S.user.uid, JSON.stringify([...l, k])); };
+function limpiarSesionLocal(){ ["gias-unlocked", "gias-store", "gias-view"].forEach(LS.del); if (S.user) LS.del("gias-ok-" + S.user.uid); }
+/* Bloquea la app sin cerrar la sesión: al volver pide huella (o clave). */
+function bloquear(){ limpiarSesionLocal(); stopAll(); renderLock(); }
 function bioActiva(){ try { return !!localStorage.getItem(bioKey()); } catch { return false; } }
-function desbloqueado(){ try { return sessionStorage.getItem("gias-unlocked") === S.user?.uid; } catch { return false; } }
-function marcarDesbloqueo(){ try { sessionStorage.setItem("gias-unlocked", S.user.uid); } catch {} }
+function desbloqueado(){ return LS.get("gias-unlocked") === S.user?.uid; }
+function marcarDesbloqueo(){ LS.set("gias-unlocked", S.user.uid); }
 async function activarBio(){
   try {
     const cred = await navigator.credentials.create({publicKey: {
@@ -203,19 +217,45 @@ async function verificarBio(){
     userVerification: "required", timeout: 60000
   }});
 }
+function ofrecerHuella(){
+  const o = openModal({title: "Entrar con tu huella", sub: "La próxima vez abres la app solo con tu huella, sin escribir la clave.",
+    foot: `<button class="btn" data-close>Ahora no</button><button class="btn primary" id="oh-ok">${ICON_FP} Activar huella</button>`});
+  $("#oh-ok", o).onclick = async () => { closeModal(o); if (await activarBio()){ if (S.store) refresh(); else renderLogin(); } };
+}
 function renderLock(){
+  const bio = S.bio && bioActiva();
   document.documentElement.dataset.store = "shop";
   $("#app").innerHTML = `<main class="login">
     <div class="pair"><div class="mono">${monoHtml("shop")}</div><div class="mono">${monoHtml("kids")}</div></div>
     <h1>Hola de nuevo</h1><p class="lead">${esc(S.user.email)}</p>
-    <div class="signin"><button class="btn primary" id="bgo">${ICON_FP} Entrar con huella</button>
+    <div class="signin">
+      ${bio ? `<button class="btn primary" id="bgo">${ICON_FP} Entrar con huella</button>` : ""}
       <div class="faint" id="berr" role="alert"></div>
-      <button class="btn ghost sm" id="bother">Entrar con correo y clave</button></div></main>`;
-  $("#bgo").onclick = async () => {
+      <form id="pwf" class="${bio ? "hidden" : ""}" style="display:flex;flex-direction:column;gap:.9rem" novalidate>
+        <div class="field"><label for="lp">Clave</label><input id="lp" class="input" type="password" autocomplete="current-password"></div>
+        <button class="btn ${bio ? "" : "primary"}" type="submit" id="lpgo">Entrar con clave</button>
+      </form>
+      ${bio ? `<button class="btn ghost sm" id="bpw">Entrar con clave</button>` : ""}
+      <button class="btn ghost sm" id="bother">Usar otra cuenta</button>
+    </div></main>`;
+  const err = t => { $("#berr").textContent = t; };
+  const huella = async (auto) => {
     try { await verificarBio(); marcarDesbloqueo(); startData(); }
-    catch (e){ $("#berr").textContent = e.name === "NotAllowedError" ? "No se reconoció la huella o se canceló. Toca el botón para intentar de nuevo." : "No se pudo verificar: " + e.message; }
+    catch (e){ err(auto ? "Toca Entrar con huella para usar tu huella." : e.name === "NotAllowedError" ? "No se reconoció la huella o se canceló. Inténtalo de nuevo o entra con tu clave." : "No se pudo verificar: " + e.message); }
   };
-  $("#bother").onclick = () => S.auth.signOut();
+  if (bio){
+    $("#bgo").onclick = () => huella(false);
+    $("#bpw").onclick = () => { $("#pwf").classList.remove("hidden"); $("#bpw").classList.add("hidden"); $("#lp").focus(); };
+    setTimeout(() => huella(true), 300); // pide la huella de una vez
+  } else setTimeout(() => $("#lp")?.focus(), 50);
+  $("#pwf").onsubmit = async e => {
+    e.preventDefault(); const pw = $("#lp").value, b = $("#lpgo");
+    if (!pw){ err("Escribe tu clave."); return; }
+    b.disabled = true;
+    try { await S.user.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(S.user.email, pw)); marcarDesbloqueo(); startData(); }
+    catch (x){ b.disabled = false; err(authMsg(x.code)); }
+  };
+  $("#bother").onclick = () => { limpiarSesionLocal(); S.auth.signOut(); };
 }
 
 function stopAll(){ S.base.forEach(u => u()); S.base = []; S.unsub.forEach(u => u()); S.unsub = []; S.store = null; S.ready = false; }
@@ -232,8 +272,8 @@ function startData(){
   }, dataErr));
   S.base.push(S.db.doc("config/tasa").onSnapshot(d => { S.tasa = d.exists ? d.data() : null; paintTasa(); if (S.store) refresh(); }, () => {}));
   setTimeout(() => { if (!S.ready && S.user){ S.ready = true; if (!S.store) renderLogin(); } }, 10000);
-  let last = null; try { last = sessionStorage.getItem("gias-store"); } catch {}
-  if (last && STORES[last]) enterStore(last);
+  const last = LS.get("gias-store");
+  if (last && STORES[last]) enterStore(last, LS.get("gias-view"));
 }
 function authMsg(c){
   return ({"auth/invalid-credential": "El correo o la clave no coinciden.", "auth/invalid-login-credentials": "El correo o la clave no coinciden.", "auth/wrong-password": "El correo o la clave no coinciden.", "auth/user-not-found": "Ese correo no tiene acceso.", "auth/invalid-email": "Ese correo no es válido.", "auth/too-many-requests": "Demasiados intentos. Espera unos minutos y vuelve a probar.", "auth/network-request-failed": "No hay conexión a internet.", "auth/user-disabled": "Este usuario fue desactivado."})[c] || "No se pudo entrar (" + c + ").";
@@ -285,7 +325,7 @@ function renderLogin(){
       </button>`).join("")}</div>
     ${!S.ready && !S.noDb ? `<div class="faint">Cargando…</div>` : ""}
     ${S.user && S.bio && !bioActiva() ? `<button class="btn sm" data-act="bioOn">${ICON_FP} Activar entrada con huella en este equipo</button>` : ""}
-    ${S.user ? `<button class="btn ghost sm" data-act="signout">Cerrar sesión de ${esc(S.user.email || "")}</button>` : ""}
+    ${S.user ? `<button class="btn ghost sm" data-act="lock">${ICON.out} Salir y bloquear</button>` : ""}
   </main>`;
 }
 function openLogin(key){
@@ -314,10 +354,11 @@ function openLogin(key){
 }
 
 /* ======================= tienda ======================= */
-function enterStore(key){
-  S.store = key; S.view = "resumen"; S.q = ""; S.pedidos = []; S.productos = []; S.ventas = []; S.loaded = {}; S.slow = false;
+function enterStore(key, vista){
+  marcarTiendaOk(key);
+  S.store = key; S.view = VIEWS[vista] ? vista : "resumen"; S.q = ""; S.pedidos = []; S.productos = []; S.ventas = []; S.loaded = {}; S.slow = false;
   document.documentElement.dataset.store = key;
-  try { sessionStorage.setItem("gias-store", key); } catch {}
+  LS.set("gias-store", key); LS.set("gias-view", S.view);
   renderShell();
   S.unsub.forEach(u => u()); S.unsub = [];
   const listen = (name) => S.unsub.push(col(name).onSnapshot(snap => {
@@ -331,7 +372,7 @@ function enterStore(key){
 }
 function leaveStore(){
   S.unsub.forEach(u => u()); S.unsub = []; S.store = null;
-  try { sessionStorage.removeItem("gias-store"); } catch {}
+  LS.del("gias-store"); LS.del("gias-view");
   renderLogin();
 }
 const ICON_PEOPLE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 4.5a3 3 0 010 6M18 14c1.9.8 3 2.9 3 6"/></svg>';
@@ -971,6 +1012,7 @@ VIEWS.ajustes = {
         <div style="display:flex;flex-direction:column;gap:.5rem;align-items:flex-start">${S.assets ? `<button class="btn primary sm" data-act="logo">Cambiar logo</button>${t.logo ? `<button class="btn ghost sm" data-act="logoOff">Volver al logo original</button>` : ""}` : `<span class="faint">Configura Cloudinary en config.js para subir el logo.</span>`}<span class="faint">PNG o SVG con fondo transparente se ve mejor.</span></div></div></section>
       <section class="panel"><h3>Mensaje del recibo</h3><p class="muted" style="margin-top:0">Aparece al pie de cada recibo que compartes con tus clientes.</p><textarea id="msg" class="input" rows="4">${esc(mensajeTienda())}</textarea><div style="margin-top:.6rem;display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn primary sm" data-act="saveMsg">Guardar mensaje</button>${t.mensaje ? `<button class="btn ghost sm" data-act="resetMsg">Usar el mensaje original</button>` : ""}</div></section>
       <section class="panel"><h3>Entrar con huella</h3>${!S.bio ? `<p class="muted" style="margin:0">Este equipo no tiene huella ni reconocimiento facial disponible para el navegador, o la página no está abierta con https.</p>` : bioActiva() ? `<p class="muted" style="margin-top:0">Activada en este equipo. Al abrir la app te pedirá tu huella.</p><button class="btn sm" data-act="bioOff">Desactivar</button>` : `<p class="muted" style="margin-top:0">Abre la app con tu huella o tu cara en lugar de escribir la clave. Se activa en cada teléfono por separado.</p><button class="btn primary sm" data-act="bioOn">${ICON_FP} Activar en este equipo</button>`}</section>
+      <section class="panel"><h3>Sesión</h3><p class="muted" style="margin-top:0">La app queda abierta donde la dejaste. Bloquéala si alguien más usará este teléfono.</p><div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn sm" data-act="lock">Salir y bloquear</button><button class="btn ghost sm danger" data-act="signout">Cerrar sesión en este equipo</button></div></section>
       <section class="panel"><h3>Clave de acceso</h3><p class="muted" style="margin-top:0">Separa el trabajo de cada tienda. Cámbiala si alguien más la conoce.</p><button class="btn sm" data-act="pass">Cambiar clave</button></section>
       <section class="panel"><h3>Respaldos</h3><p class="muted" style="margin-top:0">Descarga tus datos en CSV para abrirlos en Excel.</p><div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn sm" data-act="export" data-v="inventario">Inventario</button><button class="btn sm" data-act="export" data-v="ventas">Ventas</button><button class="btn sm" data-act="export" data-v="pedidos">Pedidos</button></div></section>
     </div>`;
@@ -1002,12 +1044,13 @@ document.addEventListener("click", async e => {
   const b = e.target.closest("[data-act]");
   if (!b) return;
   const a = b.dataset.act, id = b.dataset.id, v = b.dataset.v;
-  if (a === "pick") openLogin(b.dataset.k);
+  if (a === "pick"){ if (tiendasOk().includes(b.dataset.k)) enterStore(b.dataset.k); else openLogin(b.dataset.k); }
   if (a === "leave") leaveStore();
-  if (a === "signout"){ try { sessionStorage.removeItem("gias-store"); sessionStorage.removeItem("gias-unlocked"); } catch {} S.auth.signOut(); }
+  if (a === "signout"){ limpiarSesionLocal(); S.auth.signOut(); }
+  if (a === "lock") bloquear();
   if (a === "bioOn"){ if (await activarBio()){ if (S.store) refresh(); else renderLogin(); } }
   if (a === "bioOff"){ try { localStorage.removeItem(bioKey()); } catch {} toast("Entrada con huella desactivada en este equipo."); refresh(); }
-  if (a === "nav"){ S.view = v; S.q = ""; renderView(); }
+  if (a === "nav"){ S.view = v; S.q = ""; LS.set("gias-view", v); renderView(); }
   if (a === "newOrder") openOrder();
   if (a === "editOrder") openOrder(id);
   if (a === "receive") openReceive(id);
