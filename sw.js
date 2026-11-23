@@ -1,7 +1,7 @@
 /* Hace que el sistema se instale como app y abra rápido.
    Solo guarda los archivos propios; los datos siempre vienen de Firebase.
    Si cambias algún archivo, sube el número de VERSION. */
-const VERSION = "gias-v7";
+const VERSION = "gias-v8";
 const ARCHIVOS = ["./", "index.html", "styles.css", "script.js", "config.js", "manifest.json",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 
@@ -16,7 +16,7 @@ self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request).then(r => { const copia = r.clone(); caches.open(VERSION).then(c => c.put(e.request, copia)); return r; })
-      .catch(() => caches.match(e.request).then(r => r || caches.match("index.html")))
+    fetch(e.request, {cache: "no-cache"}).then(r => { const copia = r.clone(); caches.open(VERSION).then(c => c.put(e.request, copia)); return r; })
+      .catch(() => caches.match(e.request, {ignoreSearch: true}).then(r => r || caches.match("index.html")))
   );
 });
